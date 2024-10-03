@@ -1,0 +1,118 @@
+_schema-version: 3.3.0
+ID: Mahindra
+description: A simple CAP project.
+version: 1.0.0
+modules:
+- name: Mahindra-srv
+  type: nodejs
+  path: gen/srv
+  requires:
+  - name: Mahindra-db
+  provides:
+  - name: srv-api
+    properties:
+      srv-url: ${default-url}
+  parameters:
+    buildpack: nodejs_buildpack
+    readiness-health-check-http-endpoint: /health
+    readiness-health-check-type: http
+  build-parameters:
+    builder: npm
+- name: Mahindra-db-deployer
+  type: hdb
+  path: gen/db
+  requires:
+  - name: Mahindra-db
+  parameters:
+    buildpack: nodejs_buildpack
+- name: Mahindra-app-content
+  type: com.sap.application.content
+  path: .
+  requires:
+  - name: Mahindra-repo-host
+    parameters:
+      content-target: true
+  build-parameters:
+    build-result: resources
+    requires:
+    - artifacts:
+      - salesapp.zip
+      name: salesapp
+      target-path: resources/
+- name: salesapp
+  type: html5
+  path: app/sales_app
+  build-parameters:
+    build-result: dist
+    builder: custom
+    commands:
+    - npm install
+    - npm run build:cf
+    supported-platforms: []
+- name: Mahindra-destination-content
+  type: com.sap.application.content
+  requires:
+  - name: Mahindra-destination-service
+    parameters:
+      content-target: true
+  - name: Mahindra-repo-host
+    parameters:
+      service-key:
+        name: Mahindra-repo-host-key
+  - name: uaa_Mahindra
+    parameters:
+      service-key:
+        name: uaa_Mahindra-key
+  parameters:
+    content:
+      instance:
+        destinations:
+        - Name: sales_Mahindra_repo_host
+          ServiceInstanceName: Mahindra-html5-srv
+          ServiceKeyName: Mahindra-repo-host-key
+          sap.cloud.service: sales
+        - Authentication: OAuth2UserTokenExchange
+          Name: sales_uaa_Mahindra
+          ServiceInstanceName: Mahindra-xsuaa-service
+          ServiceKeyName: uaa_Mahindra-key
+          sap.cloud.service: sales
+        existing_destinations_policy: ignore
+  build-parameters:
+    no-source: true
+resources:
+- name: Mahindra-db
+  type: com.sap.xs.hdi-container
+  parameters:
+    service: hana
+    service-plan: hdi-shared
+- name: Mahindra-repo-host
+  type: org.cloudfoundry.managed-service
+  parameters:
+    service: html5-apps-repo
+    service-name: Mahindra-html5-srv
+    service-plan: app-host
+- name: Mahindra-destination-service
+  type: org.cloudfoundry.managed-service
+  parameters:
+    config:
+      HTML5Runtime_enabled: true
+      version: 1.0.0
+    service: destination
+    service-name: Mahindra-destination-service
+    service-plan: lite
+- name: uaa_Mahindra
+  type: org.cloudfoundry.managed-service
+  parameters:
+    path: ./xs-security.json
+    service: xsuaa
+    service-name: Mahindra-xsuaa-service
+    service-plan: application
+parameters:
+  deploy_mode: html5-repo
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+  - builder: custom
+    commands:
+    - npm ci
+    - npx cds build --production
